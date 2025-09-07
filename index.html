@@ -1,0 +1,979 @@
+<!doctype html>
+<html lang="en" data-theme="auto">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AMR Graph Explorer | Durham University</title>
+  <meta name="theme-color" content="#a78bfa" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- JS libs via backend vendor proxy (server.py provides /vendor/*) -->
+  <script src="/vendor/marked.min.js"></script>
+  <script src="/vendor/cytoscape.min.js"></script>
+
+  <style>
+    /* ---------- THEME ---------- */
+    :root {
+      --bg: #f7f6fb;
+      --card: #ffffff;
+      --muted: #5b6473;
+      --text: #0f1020;
+      --border: #e7e7ef;
+      --accent: #a78bfa;
+      --accent-strong:#7c3aed;
+      --accent-2:#22d3ee;
+      --ring: rgba(124,58,237,.4);
+      --success:#10b981;
+      --warning:#f59e0b;
+      color-scheme: light;
+    }
+    [data-theme="dark"] {
+      --bg: #0b1020;
+      --card: #0f172a;
+      --muted: #94a3b8;
+      --text: #e7eaf2;
+      --border: #1f2a44;
+      --accent: #a78bfa;
+      --accent-strong:#8b5cf6;
+      --ring: rgba(167,139,250,.35);
+      color-scheme: dark;
+    }
+    *{ box-sizing: border-box }
+    html, body { height: 100%; }
+    body{
+      margin:0; font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--text);
+      background:
+        radial-gradient(1200px 600px at 10% -10%, rgba(167,139,250,.18), transparent),
+        radial-gradient(900px 450px at 110% 0%, rgba(34,211,238,.10), transparent),
+        var(--bg);
+      min-height:100vh;
+      overflow-x:hidden;
+    }
+    a{ color:inherit; text-decoration:none }
+    img{ display:block; max-width:100% }
+    .wrap{ max-width:1100px; margin:0 auto; padding:24px 18px 64px; }
+
+    /* ---------- ERROR TOAST ---------- */
+    .error-toast {
+      position: fixed;
+      top: 80px;
+      right: 20px;
+      background: #fee2e2;
+      border: 1px solid #fca5a5;
+      color: #b91c1c;
+      padding: 12px 18px;
+      border-radius: 8px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+      z-index: 1000;
+      transform: translateX(400px);
+      transition: transform 0.3s ease;
+    }
+    [data-theme="dark"] .error-toast {
+      background: #450a0a;
+      border-color: #b91c1c;
+      color: #fca5a5;
+    }
+    .error-toast.show {
+      transform: translateX(0);
+    }
+
+    /* ---------- HEADER ---------- */
+    header{
+      position: sticky; top:0; z-index:40;
+      backdrop-filter: blur(8px);
+      background: color-mix(in oklab, var(--bg) 70%, transparent);
+      border-bottom: 1px solid var(--border);
+    }
+    .bar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:12px 18px; }
+    .brand{ display:flex; align-items:center; gap:12px; }
+    .brand .title{ display:flex; flex-direction:column; line-height:1.05 }
+    .brand .title small{ color:var(--muted); font-size:12px }
+    .spacer{ flex:1 }
+    .actions{ display:flex; align-items:center; gap:10px }
+
+    /* ---------- BUTTONS ---------- */
+    .btn{ display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:12px; font-weight:600; font-size:14px; border:1px solid var(--border); background:var(--card); cursor:pointer; transition: all .18s ease; }
+    .btn:hover{ transform: translateY(-1px); box-shadow: 0 10px 24px rgba(2,6,23,.14) }
+    .btn:focus-visible{ outline: none; box-shadow: 0 0 0 4px var(--ring) }
+    .btn:disabled{ opacity: 0.6; cursor: not-allowed; transform: none; }
+    .btn-primary{ background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 86%, white), var(--accent)); color:#fff; border-color: color-mix(in oklab, var(--accent) 60%, black) }
+    .btn-ghost{ background: transparent }
+    .chip{ padding:6px 10px; border-radius:999px; border:1px solid var(--border); font-size:12px; color: var(--muted); }
+
+    /* ---------- MAIN/HERO ---------- */
+    .hero{ margin-top:18px; padding:28px 24px; background:linear-gradient(135deg, rgba(167,139,250,.18), rgba(34,211,238,.08)), var(--card); border:1px solid var(--border); border-radius:18px; box-shadow: 0 10px 30px rgba(2,6,23,.20); }
+    h1{ margin:0 0 6px; font-size:34px; letter-spacing:.2px }
+    .sub{ color:var(--muted); font-size:14px; margin-bottom:16px }
+
+    .hero-head{ display:flex; align-items:center; gap:12px }
+    .hero-head h1{ margin:0 }
+
+    /* ---------- GRID LAYOUT ---------- */
+    .grid{ display:grid; grid-template-columns: 1fr; gap:16px; margin-top:18px }
+    @media (min-width: 980px){ .grid{ grid-template-columns: 1.2fr 8px 1fr } }
+
+    .card{ background:var(--card); border:1px solid var(--border); border-radius:16px; padding:18px; overflow:hidden; }
+    .card h3{ margin:0 0 8px }
+    .muted{ color:var(--muted) }
+    .kbd{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; padding:2px 6px; border-radius:6px; border:1px solid var(--border); background: color-mix(in oklab, var(--bg) 80%, white); }
+
+    /* ---------- SPLIT RESIZER & ANSWER ---------- */
+    @media (min-width:980px){
+      .split{ --left:55%; --right:45%; grid-template-columns: var(--left) 8px var(--right); align-items: stretch }
+    }
+    .resizer{ display:none }
+    @media (min-width:980px){
+      .resizer{
+        display:block; width:10px; cursor:col-resize; position:relative;
+        background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 12%, transparent), transparent);
+        border-radius:10px; border:1px solid var(--border);
+      }
+      .resizer::before{
+        content:''; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+        width:4px; height:36px; border-radius:4px;
+        background: color-mix(in oklab, var(--accent) 35%, var(--card));
+        box-shadow: 0 -12px 0 0 currentColor, 0 12px 0 0 currentColor;
+        opacity:.6;
+      }
+      .resizer:hover{
+        background: linear-gradient(180deg, color-mix(in oklab, var(--accent) 20%, transparent), transparent);
+      }
+      .resizer:hover::before{ opacity:.9 }
+    }
+
+    /* History chips */
+    .history{ margin-bottom:12px }
+    .history-header{ display:flex; align-items:center; justify-content:space-between; margin:0 2px 6px; color:var(--muted); font-size:12px }
+    .history-list{ display:flex; flex-wrap:wrap; gap:8px }
+    .chip-btn{ display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border-radius:999px; border:1px solid var(--border); background: var(--card); font-size:12px; cursor:pointer; transition:.18s ease }
+    .chip-btn:hover{ transform: translateY(-1px); box-shadow: 0 8px 18px rgba(2,6,23,.12) }
+    .chip-btn .meta{ color:var(--muted); font-size:11px }
+    .chip-btn .pin{ margin-left:4px }
+    .icon-btn{ background:transparent; border:none; cursor:pointer; padding:0 4px; color:var(--muted) }
+    .icon-btn:hover{ color:var(--text) }
+    .history.collapsed .history-list{ display:none }
+    .history-header .history-toggler{ margin-right:6px; transform: rotate(0deg); transition: transform .18s }
+    .history.collapsed .history-toggler{ transform: rotate(-90deg) }
+
+    .answer{ border:1px solid var(--border); background: color-mix(in oklab, var(--accent) 6%, var(--card)); border-radius:12px; padding:12px; margin-bottom:12px }
+    .answer .title{ font-weight:700; margin-bottom:6px }
+
+    /* ---------- CANVAS ---------- */
+    .canvas{
+      height: min(62vh, 560px);
+      width: 100%;
+      border:1px dashed var(--border);
+      border-radius:14px;
+      background: repeating-linear-gradient(45deg, color-mix(in oklab, var(--bg) 94%, white) 0 10px, transparent 10px 20px);
+      display:grid; place-items:center; color:var(--muted);
+      overflow:hidden;
+    }
+
+    /* ---------- TABLE ---------- */
+    table{ width:100%; border-collapse: collapse; font-size:14px }
+    th, td{ padding:10px 12px; border-bottom:1px solid var(--border) }
+    th{ text-align:left; color:var(--muted) }
+    tr:hover td{ background: color-mix(in oklab, var(--accent) 6%, var(--card)); }
+
+    /* ---------- UTIL ---------- */
+    .row{ display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+    .right{ margin-left:auto }
+    .sr-only{ position:absolute; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,0,0); white-space:nowrap; border:0 }
+    input[type="number"]{ width:90px; padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--text) }
+    select{ padding:8px 10px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--text) }
+
+    /* ---------- LOADING STATES ---------- */
+    .loading {
+      position: relative;
+    }
+    .loading::after {
+      content: '';
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 16px;
+      height: 16px;
+      border: 2px solid var(--border);
+      border-top: 2px solid var(--accent);
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin {
+      0% { transform: translateY(-50%) rotate(0deg); }
+      100% { transform: translateY(-50%) rotate(360deg); }
+    }
+  </style>
+</head>
+
+<body>
+  <header>
+    <div class="bar wrap" style="padding-left:0;padding-right:0">
+      <div class="brand" style="padding-left:18px">
+        <img src="https://www.stickpng.com/img/icons-logos-emojis/russell-group-universities/durham-university-logo" alt="Durham University logo" width="42" height="42" style="border-radius:8px" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 64 64&quot;><rect width=&quot;64&quot; height=&quot;64&quot; rx=&quot;12&quot; fill=&quot;%238b5cf6&quot;/><text x=&quot;50%25&quot; y=&quot;58%25&quot; font-family=&quot;Arial, sans-serif&quot; font-size=&quot;28&quot; text-anchor=&quot;middle&quot; fill=&quot;white&quot;>DU</text></svg>'"/>
+        <div class="title">
+          <strong>AMR Graph Explorer</strong>
+          <small>Durham University</small>
+        </div>
+      </div>
+      <div class="spacer"></div>
+      <div class="actions" style="padding-right:18px">
+        <span class="chip" id="modeChip">Auto theme</span>
+        <button class="btn btn-ghost" id="themeToggle" title="Toggle light/dark">
+          <svg id="iconSun" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></svg>
+          <svg id="iconMoon" style="display:none" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span class="sr-only">Toggle theme</span>
+        </button>
+        <button class="btn btn-primary" id="downloadCsvBtn">
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Download CSV
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="hero" style="overflow:hidden">
+      <div class="hero-head">
+        <img src="https://www.stickpng.com/img/icons-logos-emojis/russell-group-universities/durham-university-logo" alt="Durham University logo" width="42" height="42" style="border-radius:8px" onerror="this.onerror=null; this.src='data:image/svg+xml;utf8,<svg xmlns=&quot;http://www.w3.org/2000/svg&quot; viewBox=&quot;0 0 64 64&quot;><rect width=&quot;64&quot; height=&quot;64&quot; rx=&quot;12&quot; fill=&quot;%238b5cf6&quot;/><text x=&quot;50%25&quot; y=&quot;58%25&quot; font-family=&quot;Arial, sans-serif&quot; font-size=&quot;28&quot; text-anchor=&quot;middle&quot; fill=&quot;white&quot;>DU</text></svg>'"/>
+        <h1>AMR Graph Explorer</h1>
+      </div>
+
+      <div class="grid split" id="splitGrid">
+        <div class="card" id="leftPane">
+          <h3>Query & results</h3>
+
+          <div class="row" style="margin-bottom:10px">
+            <input id="queryInput" placeholder="Ask or query (e.g. What is blaNDM-1? / plasmids carrying blaCTX-M)" style="flex:1; padding:10px 12px; border-radius:10px; border:1px solid var(--border); background:var(--card); color:var(--text)" />
+            <button class="btn" id="runQueryBtn">Run</button>
+          </div>
+
+          <div class="row" style="margin-bottom:10px">
+            <select id="taskSelect" title="Prediction task">
+              <option value="link" selected>link (gene → contig/plasmid)</option>
+              <option value="arg">arg (contig → ARG)</option>
+              <option value="plasmid">plasmid (contig → type)</option>
+              <option value="mge">mge (contig → element)</option>
+              <option value="host">host (contig → host)</option>
+            </select>
+            <input id="topkInput" type="number" min="1" max="100" value="10" title="Top-K predictions" />
+            <button class="btn" id="predictBtn" title="Overlay model predictions">Predict</button>
+          </div>
+
+          <div id="history" class="history">
+            <div class="history-header">
+              <span>Recent</span>
+              <div>
+                <button class="icon-btn history-toggler" id="toggleHistory" title="Collapse/Expand">▾</button>
+                <button class="icon-btn" id="clearHistory" title="Clear history">Clear</button>
+              </div>
+            </div>
+            <div id="historyList" class="history-list"></div>
+          </div>
+
+          <div id="answerPanel" class="answer">
+            <div class="title">Answer</div>
+            <div id="answerBody"></div>
+          </div>
+
+          <div style="max-height:290px; overflow:auto">
+            <table id="resultsTable" aria-label="Query results table">
+              <thead id="resultsHead"><tr><th>Gene</th><th>Plasmid</th><th>Contig</th><th>Sample</th></tr></thead>
+              <tbody id="resultsBody"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <div class="resizer" id="splitResizer" role="separator" aria-orientation="vertical" aria-label="Resize list and graph"></div>
+
+        <div class="card" id="rightPane" style="overflow:hidden">
+          <h3>Graph canvas</h3>
+          <div class="canvas" id="graphCanvas">Graph visualization area</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+  // --------------- UTIL ---------------
+  function $(id){ return document.getElementById(id); }
+  function ok(x){ return x !== undefined && x !== null; }
+
+  // --------------- ERROR HANDLING ---------------
+  let errorToastTimer = null;
+  
+  function showError(message) {
+    // Remove existing error toast
+    const existingToast = document.querySelector('.error-toast');
+    if (existingToast) existingToast.remove();
+    
+    // Create new error toast
+    const toast = document.createElement('div');
+    toast.className = 'error-toast';
+    toast.textContent = message;
+    document.body.appendChild(toast);
+    
+    // Show with animation
+    setTimeout(() => toast.classList.add('show'), 10);
+    
+    // Auto-hide after 5 seconds
+    clearTimeout(errorToastTimer);
+    errorToastTimer = setTimeout(() => {
+      toast.classList.remove('show');
+      setTimeout(() => toast.remove(), 300);
+    }, 5000);
+  }
+
+  // Global error handler
+  window.addEventListener('error', function(e) {
+    console.error('[Frontend Error]', e.message, e.filename, e.lineno);
+    showError(`JavaScript Error: ${e.message}`);
+  });
+
+  window.addEventListener('unhandledrejection', function(e) {
+    console.error('[Frontend Promise Error]', e.reason);
+    showError(`Promise Error: ${e.reason}`);
+  });
+
+  // --------------- SAFE STORAGE ---------------
+  function safeGetStorage(key, defaultValue = null) {
+    try {
+      return localStorage.getItem(key) || defaultValue;
+    } catch (e) {
+      console.warn('localStorage not available:', e);
+      return defaultValue;
+    }
+  }
+
+  function safeSetStorage(key, value) {
+    try {
+      localStorage.setItem(key, value);
+    } catch (e) {
+      console.warn('localStorage not available:', e);
+    }
+  }
+
+  // --------------- THEME ---------------
+  (function initTheme(){
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)');
+    const root = document.documentElement;
+    const modeChip = $('modeChip'), iconSun = $('iconSun'), iconMoon = $('iconMoon');
+
+    function apply(mode){
+      try {
+        if(mode==='auto'){
+          root.setAttribute('data-theme', prefersDark.matches ? 'dark' : 'light');
+          if (modeChip) modeChip.textContent = 'Auto theme';
+          if (iconSun) iconSun.style.display = prefersDark.matches ? 'none' : '';
+          if (iconMoon) iconMoon.style.display = prefersDark.matches ? '' : 'none';
+        }else{
+          root.setAttribute('data-theme', mode);
+          if (modeChip) modeChip.textContent = mode==='dark'?'Dark theme':'Light theme';
+          if (iconSun) iconSun.style.display = mode==='dark'?'none':'';
+          if (iconMoon) iconMoon.style.display = mode==='dark'? '' : 'none';
+        }
+        if(window.__lastElements) renderGraph(window.__lastElements);
+      } catch (e) {
+        console.error('Theme apply error:', e);
+      }
+    }
+
+    const saved = safeGetStorage('theme-mode', 'auto');
+    apply(saved);
+
+    const themeToggle = $('themeToggle');
+    if (themeToggle) {
+      themeToggle.addEventListener('click', ()=>{
+        try {
+          const cur = safeGetStorage('theme-mode', 'auto');
+          const next = cur==='auto' ? (prefersDark.matches?'light':'dark') : (cur==='dark'?'light':'dark');
+          safeSetStorage('theme-mode', next);
+          apply(next);
+        } catch (e) {
+          console.error('Theme toggle error:', e);
+        }
+      });
+    }
+
+    prefersDark.addEventListener('change', ()=>{
+      if(safeGetStorage('theme-mode', 'auto')==='auto') apply('auto');
+    });
+  })();
+
+  // --------------- TASK PLACEHOLDER ---------------
+  const taskSelect = $('taskSelect');
+  const queryInput = $('queryInput');
+  function syncPlaceholder(){
+    if (!taskSelect || !queryInput) return;
+    try {
+      const t = taskSelect.value;
+      if(t==='link'){
+        queryInput.placeholder = 'Enter gene (e.g. CTX-M-55, blaNDM-1) — or ask a natural question';
+      }else{
+        queryInput.placeholder = 'Enter contig id (e.g. contig_42) — prediction task: ' + t;
+      }
+    } catch (e) {
+      console.error('Placeholder sync error:', e);
+    }
+  }
+  if (taskSelect) {
+    taskSelect.addEventListener('change', syncPlaceholder);
+    syncPlaceholder();
+  }
+
+  // --------------- ANSWER PANEL ---------------
+  const answerPanel = $('answerPanel');
+  const answerBody = $('answerBody');
+  function setAnswer(md){
+    if (!answerPanel || !answerBody) return;
+    try {
+      if(md && String(md).trim()){
+        answerPanel.style.display = '';
+        const parser = (window.marked && window.marked.parse) ? window.marked.parse : (s)=>String(s||'');
+        answerBody.innerHTML = parser(String(md));
+      }else{
+        answerPanel.style.display = 'none';
+        answerBody.innerHTML = '';
+      }
+    } catch (e) {
+      console.error('Answer panel error:', e);
+      if (answerBody) answerBody.textContent = 'Error displaying answer';
+    }
+  }
+  window.setAnswer = setAnswer;
+  setAnswer('');
+
+  // --------------- HISTORY ---------------
+  const HISTORY_KEY = 'amr-history';
+  const MAX_HISTORY = 8;
+  function loadHistory(){
+    try{ 
+      const stored = safeGetStorage(HISTORY_KEY, '[]');
+      return JSON.parse(stored); 
+    }catch(e){ 
+      console.warn('History load error:', e);
+      return []; 
+    }
+  }
+  function saveHistory(arr){ 
+    try {
+      safeSetStorage(HISTORY_KEY, JSON.stringify(arr)); 
+    } catch (e) {
+      console.warn('History save error:', e);
+    }
+  }
+  function addToHistory(q, type){
+    if(!q) return;
+    try {
+      let arr = loadHistory();
+      arr = arr.filter(x => x.q !== q);
+      arr.unshift({ q, type, pinned:false, ts: Date.now() });
+      if(arr.length > 30) arr = arr.slice(0,30);
+      saveHistory(arr); 
+      renderHistory();
+    } catch (e) {
+      console.error('Add to history error:', e);
+    }
+  }
+  function togglePin(q){
+    try {
+      const arr = loadHistory();
+      const i = arr.findIndex(x => x.q === q);
+      if(i > -1){ arr[i].pinned = !arr[i].pinned; saveHistory(arr); renderHistory(); }
+    } catch (e) {
+      console.error('Toggle pin error:', e);
+    }
+  }
+  function clearHistory(){ 
+    try {
+      saveHistory([]); 
+      renderHistory(); 
+    } catch (e) {
+      console.error('Clear history error:', e);
+    }
+  }
+
+  const historyList = $('historyList');
+  const clearHistoryBtn = $('clearHistory');
+  if (clearHistoryBtn) clearHistoryBtn.addEventListener('click', clearHistory);
+  
+  const historyBox = $('history');
+  const toggleHistoryBtn = $('toggleHistory');
+  function applyHistoryCollapsed(v){ 
+    if (!historyBox || !toggleHistoryBtn) return;
+    try {
+      if(v){ 
+        historyBox.classList.add('collapsed'); 
+        toggleHistoryBtn.textContent='▸'; 
+      } else { 
+        historyBox.classList.remove('collapsed'); 
+        toggleHistoryBtn.textContent='▾'; 
+      } 
+    } catch (e) {
+      console.error('History collapse error:', e);
+    }
+  }
+  let historyCollapsed = safeGetStorage('history-collapsed', 'true') === 'true';
+  applyHistoryCollapsed(historyCollapsed);
+  if (toggleHistoryBtn) {
+    toggleHistoryBtn.addEventListener('click', () => { 
+      try {
+        historyCollapsed = !historyCollapsed; 
+        safeSetStorage('history-collapsed', String(historyCollapsed)); 
+        applyHistoryCollapsed(historyCollapsed); 
+      } catch (e) {
+        console.error('History toggle error:', e);
+      }
+    });
+  }
+
+  function renderHistory(){
+    if(!historyList) return;
+    try {
+      let arr = loadHistory();
+      arr.sort((a,b) => (b.pinned - a.pinned) || (b.ts - a.ts));
+      const top = arr.slice(0, MAX_HISTORY);
+      historyList.innerHTML = '';
+      top.forEach(item => {
+        const chip = document.createElement('div');
+        chip.className = 'chip-btn';
+        chip.setAttribute('role','button');
+        chip.setAttribute('tabindex','0');
+        chip.innerHTML = `<span class="txt">${item.q}</span><span class="meta">${item.type==='nlq'?'Q':'Filter'}</span><span class="pin" title="Pin/Unpin">${item.pinned?'★':'☆'}</span>`;
+        chip.addEventListener('click', (e) => {
+          try {
+            if(e.target && e.target.classList.contains('pin')){ 
+              togglePin(item.q); 
+              e.stopPropagation(); 
+              return; 
+            }
+            if (queryInput) queryInput.value = item.q;
+            const runBtn = $('runQueryBtn');
+            if (runBtn) runBtn.click();
+          } catch (e) {
+            console.error('History item click error:', e);
+          }
+        });
+        historyList.appendChild(chip);
+      });
+    } catch (e) {
+      console.error('Render history error:', e);
+    }
+  }
+  
+  (function seedHistoryIfEmpty(){
+    try {
+      if(loadHistory().length === 0){
+        saveHistory([
+          { q:'What is blaNDM-1?', type:'nlq', pinned:true, ts: Date.now() },
+          { q:'plasmids carrying blaCTX-M', type:'filter', pinned:false, ts: Date.now()-1 },
+          { q:'samples with mcr-1', type:'filter', pinned:false, ts: Date.now()-2 }
+        ]);
+      }
+    } catch (e) {
+      console.error('History seed error:', e);
+    }
+  })();
+  renderHistory();
+
+  // --------------- TABLE HELPERS ---------------
+  const resultsHead = $('resultsHead');
+  const resultsBody = $('resultsBody');
+
+  function renderTableFromRows(rows){
+    if (!resultsBody) return;
+    try {
+      resultsBody.innerHTML = '';
+      if(!rows || rows.length === 0){ return; }
+      const headers = Object.keys(rows[0]);
+      if (resultsHead) {
+        resultsHead.innerHTML = `<tr>${headers.map(h=>`<th>${h}</th>`).join('')}</tr>`;
+      }
+      resultsBody.innerHTML = rows.map(r => `<tr>${headers.map(h => `<td>${r[h] ?? ''}</td>`).join('')}</tr>`).join('');
+    } catch (e) {
+      console.error('Table render error:', e);
+    }
+  }
+
+  function parseCSV(text){
+    try {
+      const lines = text.trim().split(/\r?\n/);
+      const parseLine = (line) => {
+        let out=[],cur='',q=false;
+        for(let i=0;i<line.length;i++){
+          const ch=line[i];
+          if(ch==='"'){ if(q && line[i+1]==='"'){ cur+='"'; i++; } else { q=!q; } }
+          else if(ch===',' && !q){ out.push(cur); cur=''; }
+          else { cur+=ch; }
+        }
+        out.push(cur); return out;
+      };
+      const headers = parseLine(lines[0]); const rows=[];
+      for(let i=1;i<lines.length;i++){
+        if(!lines[i].trim()) continue;
+        const vals = parseLine(lines[i]); const obj={};
+        headers.forEach((h,j)=> obj[h] = vals[j] ?? '');
+        rows.push(obj);
+      }
+      return rows;
+    } catch (e) {
+      console.error('CSV parse error:', e);
+      return [];
+    }
+  }
+
+  // --------------- GRAPH (Cytoscape) ---------------
+  function graphStyleForTheme(){
+    try {
+      const isDark = (document.documentElement.getAttribute('data-theme') === 'dark');
+      const labelColor = isDark ? '#eaf2ff' : '#0b1020';
+      const haloColor  = isDark ? '#0b1020' : '#ffffff';
+      return [
+        { selector: 'node', style: {
+            'label': 'data(label)', 'font-size': 12, 'text-valign': 'center',
+            'color': labelColor, 'text-outline-width': 3, 'text-outline-color': haloColor,
+            'background-color': '#64748b'
+        }},
+        { selector: 'node[type="gene"]',    style: { 'background-color': '#f43f5e' } },
+        { selector: 'node[type="plasmid"]', style: { 'background-color': '#22d3ee' } },
+        { selector: 'node[type="contig"]',  style: { 'background-color': '#a78bfa' } },
+        { selector: 'node[type="sample"]',  style: { 'background-color': '#10b981' } },
+        { selector: 'node[type="mge"]',     style: { 'background-color': '#f59e0b' } },
+        { selector: 'node[type="host"]',    style: { 'background-color': '#60a5fa' } },
+        { selector: 'edge', style: {
+            'width': 2.5, 'line-color': isDark ? '#cbd5e1' : '#475569',
+            'target-arrow-shape': 'triangle', 'target-arrow-color': isDark ? '#cbd5e1' : '#475569',
+            'curve-style': 'bezier', 'arrow-scale': 1.1
+        }},
+        { selector: 'edge[type="predicted"]', style: {
+            'line-style': 'dashed', 'width': 3, 'line-color': '#fb923c', 'target-arrow-color': '#fb923c'
+        }}
+      ];
+    } catch (e) {
+      console.error('Graph style error:', e);
+      return [];
+    }
+  }
+
+  function renderGraph(elements){
+    const container = $('graphCanvas');
+    if (!container) return;
+    
+    try {
+      container.innerHTML = '';
+      window.__lastElements = elements;
+      if(!elements || ((!elements.nodes||elements.nodes.length===0) && (!elements.edges||elements.edges.length===0))){
+        container.textContent = 'Graph visualization area'; 
+        return;
+      }
+
+      // Check if cytoscape is available
+      if (typeof cytoscape !== 'function') {
+        container.textContent = 'Graph library not loaded';
+        console.warn('Cytoscape library not available');
+        return;
+      }
+
+      cytoscape({
+        container,
+        elements: [...(elements.nodes||[]), ...(elements.edges||[])],
+        style: graphStyleForTheme(),
+        layout: { name: 'cose', animate: false }
+      });
+    } catch (e) {
+      console.error('Graph render error:', e);
+      if (container) container.textContent = 'Graph rendering error';
+    }
+  }
+
+  // --------------- GLOBAL STATE ---------------
+  let lastCsvText = null;
+  let lastGraphObj = null;
+
+  function mergeOverlay(baseGraph, overlay){
+    try {
+      if(!overlay) return baseGraph;
+      const nodeIds = new Set((baseGraph.nodes||[]).map(n => n.data.id));
+      const edgeIds = new Set((baseGraph.edges||[]).map(e => e.data.id));
+      const nodes = [...(baseGraph.nodes||[])];
+      const edges = [...(baseGraph.edges||[])];
+      (overlay.nodes||[]).forEach(n => { if(!nodeIds.has(n.data.id)){ nodes.push(n); nodeIds.add(n.data.id);} });
+      (overlay.edges||[]).forEach(e => { if(!edgeIds.has(e.data.id)){ edges.push(e); edgeIds.add(e.data.id);} });
+      return { nodes, edges };
+    } catch (e) {
+      console.error('Overlay merge error:', e);
+      return baseGraph || { nodes: [], edges: [] };
+    }
+  }
+
+  // --------------- BUTTON LOADING STATES ---------------
+  function setButtonLoading(button, isLoading) {
+    if (!button) return;
+    if (isLoading) {
+      button.classList.add('loading');
+      button.disabled = true;
+    } else {
+      button.classList.remove('loading');
+      button.disabled = false;
+    }
+  }
+
+  // --------------- RUN /ask ---------------
+  async function runQuery(){
+    const q = queryInput ? (queryInput.value || '').trim() : '';
+    console.log('[UI] Run clicked:', q);
+    
+    const runBtn = $('runQueryBtn');
+    setButtonLoading(runBtn, true);
+    
+    if(!q){ 
+      setAnswer(''); 
+      if (resultsBody) resultsBody.innerHTML=''; 
+      renderGraph(null); 
+      lastCsvText=null; 
+      lastGraphObj=null; 
+      setButtonLoading(runBtn, false);
+      return; 
+    }
+
+    setAnswer('Running…'); 
+    if (resultsBody) resultsBody.innerHTML=''; 
+    renderGraph(null); 
+    lastCsvText=null; 
+    lastGraphObj=null;
+
+    try{
+      const resp = await fetch('/ask', {
+        method:'POST',
+        headers:{ 'Content-Type':'application/json' },
+        body: JSON.stringify({ q })
+      });
+      
+      if(!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(`Server error (${resp.status}): ${errorText || resp.statusText}`);
+      }
+      
+      const data = await resp.json();
+
+      setAnswer(data.answer_md || '');
+
+      if(data.mode === 'graph' && data.csv_text){
+        const rows = parseCSV(data.csv_text);
+        renderTableFromRows(rows);
+        lastCsvText = data.csv_text;
+      }else{
+        if (resultsHead) resultsHead.innerHTML = `<tr><th>Gene</th><th>Plasmid</th><th>Contig</th><th>Sample</th></tr>`;
+        if (resultsBody) resultsBody.innerHTML = '';
+        lastCsvText = null;
+      }
+
+      if(data.mode === 'graph' && data.graph){
+        lastGraphObj = data.graph;
+        renderGraph(data.graph);
+      }else{
+        lastGraphObj = null;
+        renderGraph(null);
+      }
+
+      addToHistory(q, 'nlq');
+    }catch(e){
+      console.error('Query error:', e);
+      setAnswer(`<span style="color:#fca5a5">Error:</span> ${e.message}`);
+      showError(`Query failed: ${e.message}`);
+    } finally {
+      setButtonLoading(runBtn, false);
+    }
+  }
+  window.runQuery = runQuery;
+
+  // --------------- PREDICT /predict ---------------
+  async function runPredict(){
+    if (!taskSelect || !queryInput) return;
+    
+    const task = taskSelect.value;
+    const raw = (queryInput.value || '').trim();
+    const topkInput = $('topkInput');
+    const topk = Math.max(1, Math.min(100, parseInt((topkInput ? topkInput.value : '10'),10)));
+    console.log('[UI] Predict clicked:', task, raw, topk);
+
+    const predictBtn = $('predictBtn');
+    setButtonLoading(predictBtn, true);
+
+    try {
+      let params = new URLSearchParams({ task, topk: String(topk) });
+
+      if(task === 'link'){
+        const m = raw.match(/(bla[A-Za-z0-9-]+|NDM[-0-9]*|CTX[-A-Za-z0-9]*|mcr[-0-9]*|tet[A-Za-z0-9-]*)/i);
+        const gene = m ? m[1] : raw;
+        if(!gene){ 
+          setAnswer('Please enter a gene (e.g. **CTX-M-55**).'); 
+          return; 
+        }
+        params.set('gene', gene);
+      } else {
+        const contig = raw || '';
+        if(!contig){ 
+          setAnswer('Please enter a contig id (e.g. **contig_1**).'); 
+          return; 
+        }
+        params.set('contig', contig);
+      }
+
+      const resp = await fetch(`/predict?${params.toString()}`);
+      if(!resp.ok) {
+        const errorText = await resp.text();
+        throw new Error(`Server error (${resp.status}): ${errorText || resp.statusText}`);
+      }
+      
+      const data = await resp.json();
+      if(!data.ok){ 
+        throw new Error(data.msg || 'Prediction failed'); 
+      }
+
+      const nextGraph = lastGraphObj ? mergeOverlay(lastGraphObj, data.overlay) : data.overlay;
+      renderGraph(nextGraph);
+      lastGraphObj = nextGraph;
+
+      if(task === 'link'){
+        setAnswer(`Overlayed **${topk}** predicted contig→plasmid links (dashed orange edges).`);
+      } else {
+        const label = task.toUpperCase();
+        setAnswer(`Overlayed **${topk}** predicted ${label} associations for the given contig (dashed orange edges).`);
+      }
+    }catch(e){
+      console.error('Predict error:', e);
+      setAnswer(`<span style="color:#fca5a5">Predict error:</span> ${e.message}`);
+      showError(`Prediction failed: ${e.message}`);
+    } finally {
+      setButtonLoading(predictBtn, false);
+    }
+  }
+  window.runPredict = runPredict;
+
+  // --------------- RESIZER ---------------
+  (function initSplit(){
+    const split = $('splitGrid'); 
+    const resizer = $('splitResizer');
+    if(!split || !resizer) return;
+    
+    try {
+      const saved = parseFloat(safeGetStorage('split-left', '55'));
+      function setSplitLeft(p){ 
+        const clamped = Math.min(70, Math.max(30, p));
+        split.style.setProperty('--left', clamped + '%');
+        split.style.setProperty('--right', (100 - clamped) + '%');
+        safeSetStorage('split-left', String(clamped));
+      }
+      if(!isNaN(saved)) setSplitLeft(saved);
+      
+      let dragging = false, startX = 0, startLeft = saved || 55;
+      function onMove(e){
+        if(!dragging) return;
+        const rect = split.getBoundingClientRect();
+        const dx = (e.clientX - startX);
+        const pct = (dx / rect.width) * 100;
+        setSplitLeft(startLeft + pct);
+      }
+      function onUp(){ 
+        dragging = false; 
+        document.body.style.userSelect = ''; 
+        window.removeEventListener('mousemove', onMove); 
+        window.removeEventListener('mouseup', onUp); 
+      }
+      resizer.addEventListener('mousedown', (e)=>{ 
+        dragging = true; 
+        startX = e.clientX; 
+        startLeft = parseFloat(getComputedStyle(split).getPropertyValue('--left')) || 55; 
+        document.body.style.userSelect = 'none'; 
+        window.addEventListener('mousemove', onMove); 
+        window.addEventListener('mouseup', onUp); 
+      });
+      resizer.addEventListener('dblclick', ()=> setSplitLeft(55));
+    } catch (e) {
+      console.error('Split resizer error:', e);
+    }
+  })();
+
+  // --------------- CSV EXPORT ---------------
+  function downloadCSV(){
+    try {
+      if(lastCsvText){
+        const blob = new Blob(["\uFEFF" + lastCsvText], {type:'text/csv;charset=utf-8;'});
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a'); 
+        a.href = url;
+        a.download = `amr-results-${new Date().toISOString().replaceAll(':','-').slice(0,19)}.csv`;
+        document.body.appendChild(a); 
+        a.click(); 
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+      } else {
+        if (!resultsBody || !resultsHead) {
+          showError('No data to download');
+          return;
+        }
+        const rows=[...resultsBody.querySelectorAll('tr')].map(tr=>[...tr.children].map(td=>`"${String(td.textContent).replaceAll('"','""')}"`).join(','));
+        const headers=[...resultsHead.querySelectorAll('th')].map(th=>`"${String(th.textContent).replaceAll('"','""')}"`).join(',');
+        const csv = [headers, ...rows].join('\n');
+        const blob=new Blob(["\uFEFF"+csv],{type:'text/csv;charset=utf-8;'});
+        const url=URL.createObjectURL(blob); 
+        const a=document.createElement('a');
+        a.href=url; 
+        a.download=`amr-results-${new Date().toISOString().replaceAll(':','-').slice(0,19)}.csv`;
+        document.body.appendChild(a); 
+        a.click(); 
+        document.body.removeChild(a); 
+        URL.revokeObjectURL(url);
+      }
+    } catch (e) {
+      console.error('CSV download error:', e);
+      showError('Failed to download CSV');
+    }
+  }
+  const downloadBtn = $('downloadCsvBtn');
+  if (downloadBtn) downloadBtn.addEventListener('click', downloadCSV);
+
+  // --------------- KEYBOARD SHORTCUTS ---------------
+  document.addEventListener('keydown', function(e) {
+    try {
+      // Enter key in query input triggers run
+      if (e.key === 'Enter' && e.target === queryInput) {
+        e.preventDefault();
+        const runBtn = $('runQueryBtn');
+        if (runBtn && !runBtn.disabled) runBtn.click();
+      }
+    } catch (error) {
+      console.error('Keyboard shortcut error:', error);
+    }
+  });
+
+  // --------------- BIND BUTTONS (after DOM ready) ---------------
+  document.addEventListener('DOMContentLoaded', ()=>{
+    try {
+      const runBtn = $('runQueryBtn');
+      const predictBtn = $('predictBtn');
+      
+      if (runBtn) runBtn.addEventListener('click', runQuery);
+      if (predictBtn) predictBtn.addEventListener('click', runPredict);
+      
+      console.log('[UI] Event listeners bound successfully');
+      
+      // Test vendor script availability
+      if (typeof cytoscape !== 'function') {
+        console.warn('Cytoscape not loaded - check vendor proxy');
+      }
+      if (typeof marked === 'undefined' || !marked.parse) {
+        console.warn('Marked not loaded - check vendor proxy');
+      }
+      
+    } catch (e) {
+      console.error('DOM ready error:', e);
+      showError('Failed to initialize interface');
+    }
+  });
+  </script>
+</body>
+</html>
