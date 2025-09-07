@@ -1,0 +1,9 @@
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+transformers==4.31.0
+torch==2.0.1+cpu -f https://download.pytorch.org/whl/torch_stable.html
+pandas==2.1.4
+networkx
+rapidfuzz
+numpy==1.24.4
+sentence-transformers==2.2.2
